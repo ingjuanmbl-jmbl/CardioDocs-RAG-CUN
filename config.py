@@ -1,4 +1,4 @@
-"""Configuración local de la aplicación ACA2 RAG."""
+"""Configuración local y de Streamlit Community Cloud para ACA2 RAG."""
 
 from dataclasses import dataclass
 import os
@@ -21,22 +21,28 @@ class Settings:
 
 
 def load_settings() -> Settings:
-    """Lee secretos desde .env y valida el umbral de similitud."""
+    """Prioriza st.secrets y usa variables de entorno/.env como alternativa.
+
+    Los valores de credenciales nunca se incluyen en mensajes ni se imprimen.
+    """
     load_dotenv()
-    required = {
-        "QDRANT_URL": os.getenv("QDRANT_URL", "").strip(),
-        "QDRANT_API_KEY": os.getenv("QDRANT_API_KEY", "").strip(),
-        "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY", "").strip(),
-        "GEMINI_MODEL": os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip(),
+    values = {
+        "QDRANT_URL": _setting("QDRANT_URL"),
+        "QDRANT_API_KEY": _setting("QDRANT_API_KEY"),
+        "GEMINI_API_KEY": _setting("GEMINI_API_KEY"),
+        "GEMINI_MODEL": _setting("GEMINI_MODEL", "gemini-3.5-flash-lite"),
     }
-    missing = [name for name, value in required.items() if not value]
+    missing = [
+        name for name in ("QDRANT_URL", "QDRANT_API_KEY", "GEMINI_API_KEY")
+        if not values[name]
+    ]
     if missing:
         raise ValueError(
             "Faltan variables de configuración: " + ", ".join(missing)
-            + ". Configúralas en el archivo .env a partir de .env.example."
+            + ". Configúralas en st.secrets o en el archivo .env local."
         )
 
-    raw_score = os.getenv("RAG_MIN_SCORE", "0.88").strip()
+    raw_score = _setting("RAG_MIN_SCORE", "0.88")
     try:
         score = float(raw_score)
     except ValueError as exc:
@@ -45,9 +51,32 @@ def load_settings() -> Settings:
         raise ValueError("RAG_MIN_SCORE debe estar entre 0 y 1.")
 
     return Settings(
-        qdrant_url=required["QDRANT_URL"],
-        qdrant_api_key=required["QDRANT_API_KEY"],
-        gemini_api_key=required["GEMINI_API_KEY"],
-        gemini_model=required["GEMINI_MODEL"],
+        qdrant_url=values["QDRANT_URL"],
+        qdrant_api_key=values["QDRANT_API_KEY"],
+        gemini_api_key=values["GEMINI_API_KEY"],
+        gemini_model=values["GEMINI_MODEL"],
         rag_min_score=score,
     )
+
+
+def _setting(name: str, default: str = "") -> str:
+    """Obtiene una clave de Streamlit y, si falta, de os.environ/.env."""
+    secret_value = _streamlit_secret(name)
+    if secret_value is not None:
+        normalized = str(secret_value).strip()
+        if normalized:
+            return normalized
+    return os.getenv(name, default).strip()
+
+
+def _streamlit_secret(name: str):
+    """Lee st.secrets sin romper la ejecución local sin secrets.toml."""
+    try:
+        import streamlit as st
+
+        value = st.secrets.get(name)
+    except Exception:
+        # Streamlit lanza una excepción cuando no hay secrets configurados o
+        # cuando config.py se ejecuta fuera de un contexto de Streamlit.
+        return None
+    return value

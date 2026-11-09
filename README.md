@@ -39,7 +39,9 @@ python -m pip install -r requirements.txt
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-Completa `.env` localmente con estas variables:
+`config.py` busca cada variable primero en `st.secrets` y, si no está definida allí, la toma de `os.environ` o de `.env`. Esta prioridad permite usar la misma configuración en local y en Streamlit Community Cloud.
+
+Para ejecución local, completa `.env` con estas variables:
 
 ```text
 QDRANT_URL
@@ -50,6 +52,8 @@ RAG_MIN_SCORE
 ```
 
 `GEMINI_MODEL` tiene como valor por defecto `gemini-3.5-flash-lite`; `RAG_MIN_SCORE`, `0.88`. `.env.example` contiene valores ficticios. `.env` está excluido por `.gitignore`; no incluyas credenciales reales en el código ni compartas ese archivo.
+
+En Streamlit Community Cloud, define esas mismas cinco claves en **App settings → Secrets**. No es necesario cambiar el código ni subir `.env`; las claves configuradas en `st.secrets` tienen prioridad sobre las variables locales. Si falta `QDRANT_URL`, `QDRANT_API_KEY` o `GEMINI_API_KEY` en ambas fuentes, la aplicación muestra un error con los nombres faltantes, nunca sus valores.
 
 La primera inicialización de E5 puede descargar el modelo a la caché local de Sentence Transformers. La barra de CardioDocs indica las etapas de conexión con Qdrant, preparación de Gemini, carga de E5 y verificación de la colección.
 

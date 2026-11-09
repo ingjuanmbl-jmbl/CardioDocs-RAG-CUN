@@ -3,6 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 
+import config
 from config import Settings, load_settings
 from rag import ABSTENTION_TEXT, RAGService
 
@@ -88,6 +89,7 @@ def test_empty_question_does_not_call_qdrant():
 
 
 def test_settings_require_credentials_and_validate_score(monkeypatch):
+    monkeypatch.setattr(config, "_streamlit_secret", lambda name: None)
     values = {
         "QDRANT_URL": "https://example.qdrant.io",
         "QDRANT_API_KEY": "fake-qdrant-key",
@@ -105,3 +107,68 @@ def test_settings_require_credentials_and_validate_score(monkeypatch):
     monkeypatch.setenv("RAG_MIN_SCORE", "1.2")
     with pytest.raises(ValueError, match="entre 0 y 1"):
         load_settings()
+
+
+def test_settings_prioritize_streamlit_secrets_over_environment(monkeypatch):
+    monkeypatch.setattr(config, "load_dotenv", Mock())
+    secrets = {
+        "QDRANT_URL": "https://cloud.example.qdrant.io",
+        "QDRANT_API_KEY": "fake-cloud-qdrant-key",
+        "GEMINI_API_KEY": "fake-cloud-gemini-key",
+        "GEMINI_MODEL": "gemini-cloud-mock",
+        "RAG_MIN_SCORE": "0.91",
+    }
+    monkeypatch.setattr(config, "_streamlit_secret", secrets.get)
+    for name in secrets:
+        monkeypatch.setenv(name, "local-conflicting-value")
+
+    settings = load_settings()
+
+    assert settings.qdrant_url == secrets["QDRANT_URL"]
+    assert settings.qdrant_api_key == secrets["QDRANT_API_KEY"]
+    assert settings.gemini_api_key == secrets["GEMINI_API_KEY"]
+    assert settings.gemini_model == secrets["GEMINI_MODEL"]
+    assert settings.rag_min_score == 0.91
+
+
+def test_settings_use_dotenv_values_when_streamlit_secrets_are_unavailable(monkeypatch):
+    values = {
+        "QDRANT_URL": "https://local.example.qdrant.io",
+        "QDRANT_API_KEY": "fake-local-qdrant-key",
+        "GEMINI_API_KEY": "fake-local-gemini-key",
+        "GEMINI_MODEL": "gemini-local-mock",
+        "RAG_MIN_SCORE": "0.87",
+    }
+    for name in values:
+        monkeypatch.delenv(name, raising=False)
+
+    def fake_load_dotenv():
+        for name, value in values.items():
+            monkeypatch.setenv(name, value)
+
+    monkeypatch.setattr(config, "load_dotenv", fake_load_dotenv)
+    monkeypatch.setattr(config, "_streamlit_secret", lambda name: None)
+
+    settings = load_settings()
+
+    assert settings.qdrant_url == values["QDRANT_URL"]
+    assert settings.qdrant_api_key == values["QDRANT_API_KEY"]
+    assert settings.gemini_api_key == values["GEMINI_API_KEY"]
+    assert settings.gemini_model == values["GEMINI_MODEL"]
+    assert settings.rag_min_score == 0.87
+
+
+def test_settings_report_missing_secret_names_without_values(monkeypatch):
+    for name in ("QDRANT_URL", "QDRANT_API_KEY", "GEMINI_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(config, "load_dotenv", Mock())
+    monkeypatch.setattr(config, "_streamlit_secret", lambda name: None)
+
+    with pytest.raises(ValueError) as error:
+        load_settings()
+
+    message = str(error.value)
+    assert "QDRANT_URL" in message
+    assert "QDRANT_API_KEY" in message
+    assert "GEMINI_API_KEY" in message
+    assert "fake-local" not in message
