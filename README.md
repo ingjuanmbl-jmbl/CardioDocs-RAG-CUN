@@ -12,6 +12,7 @@ Aplicación académica local para explorar y consultar la colección existente `
 - Abstención experimental cuando ningún fragmento con texto alcanza el umbral configurado.
 - Explorador con búsqueda semántica, filtro por tipo de fuente y filtro por documento entre los resultados del Top‑K actual.
 - Barra de carga por etapas en la primera inicialización del proceso. Desaparece cuando el sistema está listo y no se vuelve a mostrar en los reruns mientras los recursos sigan en caché.
+- Tema claro fijado desde `.streamlit/config.toml` para mantener el contraste en Streamlit Community Cloud.
 
 El filtro de documento se aplica a los resultados ya recuperados para esa búsqueda; no amplía el Top‑K ni hace una consulta global adicional por documento.
 
